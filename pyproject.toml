@@ -3,7 +3,9 @@ name = "new-amazon-scraper"
 version = "0.1.0"
 description = "Amazon product scraper with vector search and agent Q&A"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.13.3",
+]
 
 [build-system]
 requires = ["hatchling"]
