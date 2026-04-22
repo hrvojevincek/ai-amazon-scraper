@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Amazon product scraper with vector search and agent Q&A"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "lxml>=6.1.0",
     "pydantic>=2.13.3",
 ]
 
