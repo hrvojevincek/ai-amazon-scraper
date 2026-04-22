@@ -79,9 +79,9 @@ class PostgresProductRepository:
         async with self._session_factory() as session:
             existing = await session.get(ProductRow, (product.asin, product.country_code))
             if existing is None:
-                session.add(_product_to_row(product))
+                session.add(ProductRow.from_product(product))
             else:
-                _update_row_from_product(existing, product)
+                existing.update_from_product(product)
 
             if product.price is not None:
                 session.add(PriceHistoryRow(
@@ -98,7 +98,7 @@ class PostgresProductRepository:
     async def get(self, asin: str, country_code: str) -> Product | None:
         async with self._session_factory() as session:
             row = await session.get(ProductRow, (asin.upper(), country_code.upper()))
-            return _row_to_product(row) if row else None
+            return row.to_product() if row else None
 
     async def list_all(self, limit: int = 100) -> list[Product]:
         async with self._session_factory() as session:
@@ -108,7 +108,7 @@ class PostgresProductRepository:
                 .limit(limit)
             )
             rows = (await session.scalars(stmt)).all()
-            return [_row_to_product(r) for r in rows]
+            return [r.to_product() for r in rows]
 
     async def get_price_history(
         self, asin: str, country_code: str, limit: int = 50
@@ -134,53 +134,3 @@ class PostgresProductRepository:
             ]
 
 
-# --- Mappers -----------------------------------------------------------------
-
-def _product_to_row(p: Product) -> ProductRow:
-    return ProductRow(
-        asin=p.asin,
-        country_code=p.country_code,
-        title=p.title,
-        brand=p.brand,
-        price=p.price,
-        currency=p.currency,
-        rating=p.rating,
-        review_count=p.review_count,
-        availability=p.availability,
-        product_url=str(p.product_url) if p.product_url else None,
-        images=[str(u) for u in p.images],
-        categories=list(p.categories),
-        scraped_at=p.scraped_at,
-    )
-
-
-def _update_row_from_product(row: ProductRow, p: Product) -> None:
-    row.title = p.title
-    row.brand = p.brand
-    row.price = p.price
-    row.currency = p.currency
-    row.rating = p.rating
-    row.review_count = p.review_count
-    row.availability = p.availability
-    row.product_url = str(p.product_url) if p.product_url else None
-    row.images = [str(u) for u in p.images]
-    row.categories = list(p.categories)
-    row.scraped_at = p.scraped_at
-
-
-def _row_to_product(r: ProductRow) -> Product:
-    return Product(
-        asin=r.asin,
-        country_code=r.country_code,
-        title=r.title,
-        brand=r.brand,
-        price=r.price,
-        currency=r.currency,
-        rating=r.rating,
-        review_count=r.review_count,
-        availability=r.availability,
-        product_url=r.product_url,
-        images=r.images,
-        categories=r.categories,
-        scraped_at=r.scraped_at,
-    )

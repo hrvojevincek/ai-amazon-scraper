@@ -4,13 +4,16 @@ version = "0.1.0"
 description = "Amazon product scraper with vector search and agent Q&A"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.18.4",
     "asyncpg>=0.31.0",
     "beautifulsoup4>=4.14.3",
     "httpx>=0.28.1",
     "lxml>=6.1.0",
+    "openai>=2.32.0",
+    "pgvector>=0.4.2",
     "pydantic>=2.13.3",
     "pydantic-settings>=2.14.0",
-    "sqlalchemy>=2.0.49",
+    "sqlalchemy[asyncio]>=2.0.49",
 ]
 
 [build-system]

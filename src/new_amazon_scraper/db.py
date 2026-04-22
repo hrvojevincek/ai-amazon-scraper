@@ -7,6 +7,7 @@ SQLAlchemy. Only the Postgres implementation imports from this module.
 from datetime import datetime
 from decimal import Decimal
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKeyConstraint, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import (
@@ -17,6 +18,10 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
+
+from .product import Product
+
+EMBEDDING_DIMS = 1536  # OpenAI text-embedding-3-small
 
 
 class Base(DeclarativeBase):
@@ -52,6 +57,62 @@ class ProductRow(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    # Nullable: rows exist before Search indexes them. Search backfills later.
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIMS), nullable=True
+    )
+
+    # --- Mapping helpers. Domain ↔ ORM lives on the row itself so every
+    # module that hydrates Products from rows does it the same way.
+
+    @classmethod
+    def from_product(cls, p: Product) -> "ProductRow":
+        return cls(
+            asin=p.asin,
+            country_code=p.country_code,
+            title=p.title,
+            brand=p.brand,
+            price=p.price,
+            currency=p.currency,
+            rating=p.rating,
+            review_count=p.review_count,
+            availability=p.availability,
+            product_url=str(p.product_url) if p.product_url else None,
+            images=[str(u) for u in p.images],
+            categories=list(p.categories),
+            scraped_at=p.scraped_at,
+        )
+
+    def update_from_product(self, p: Product) -> None:
+        self.title = p.title
+        self.brand = p.brand
+        self.price = p.price
+        self.currency = p.currency
+        self.rating = p.rating
+        self.review_count = p.review_count
+        self.availability = p.availability
+        self.product_url = str(p.product_url) if p.product_url else None
+        self.images = [str(u) for u in p.images]
+        self.categories = list(p.categories)
+        self.scraped_at = p.scraped_at
+
+    def to_product(self) -> Product:
+        return Product(
+            asin=self.asin,
+            country_code=self.country_code,
+            title=self.title,
+            brand=self.brand,
+            price=self.price,
+            currency=self.currency,
+            rating=self.rating,
+            review_count=self.review_count,
+            availability=self.availability,
+            product_url=self.product_url,
+            images=self.images,
+            categories=self.categories,
+            scraped_at=self.scraped_at,
+        )
 
 
 class PriceHistoryRow(Base):
