@@ -59,6 +59,9 @@ class AmazonFetcher:
             headers=_DEFAULT_HEADERS,
             transport=transport,
             follow_redirects=True,
+            # Bright Data Unlocker / MITM proxies rewrite TLS; skip verify when
+            # a proxy is in play. Direct calls still validate normally.
+            verify=transport is not None or proxy_url is None,
         )
         self._max_retries = max_retries
         self._backoff = backoff
@@ -97,6 +100,60 @@ class AmazonFetcher:
         await self._client.aclose()
 
     async def __aenter__(self) -> "AmazonFetcher":
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        await self.aclose()
+
+
+class BrightDataFetcher:
+    """Fetches Amazon HTML through Bright Data's Web Unlocker REST API.
+
+    Different surface from AmazonFetcher — BD does the fetching for us:
+    POST a target URL to api.brightdata.com/request, get back a JSON
+    envelope with the upstream status code and body. No TLS MITM, no
+    proxy cert, no retry logic needed (BD retries internally).
+    """
+
+    _ENDPOINT = "https://api.brightdata.com/request"
+
+    def __init__(
+        self,
+        *,
+        api_token: str,
+        zone: str,
+        timeout: float = 60.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._zone = zone
+        self._client = httpx.AsyncClient(
+            timeout=timeout,
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+            },
+            transport=transport,
+        )
+
+    async def fetch_html(self, asin: str, country_code: str) -> str:
+        domain = _COUNTRY_TO_DOMAIN.get(country_code.upper())
+        if domain is None:
+            raise FetchError(f"Unsupported country: {country_code}")
+        url = f"https://{domain}/dp/{asin}"
+
+        resp = await self._client.post(
+            self._ENDPOINT,
+            json={"zone": self._zone, "url": url, "format": "raw"},
+        )
+        if resp.status_code >= 400:
+            raise FetchError(f"Bright Data API error {resp.status_code}: {resp.text[:200]}")
+        # format=raw returns the upstream body as the response body directly.
+        return resp.text
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def __aenter__(self) -> "BrightDataFetcher":
         return self
 
     async def __aexit__(self, *_args: object) -> None:

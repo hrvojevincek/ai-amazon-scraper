@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from .agent import Agent, AgentTools
 from .config import Settings
 from .db import create_engine, create_session_factory
-from .fetcher import AmazonFetcher
+from .fetcher import AmazonFetcher, BrightDataFetcher
 from .product import PricePoint, Product
 from .repo import PostgresProductRepository, ProductRepository
 from .scraper import HtmlFetcher, scrape_product
@@ -211,7 +211,14 @@ def create_production_app(settings: Settings | None = None) -> FastAPI:
         engine = create_engine(settings.database_url)
         session_factory = create_session_factory(engine)
         openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
-        fetcher = AmazonFetcher(proxy_url=settings.thordata_proxy_url)
+        fetcher: HtmlFetcher
+        if settings.has_brightdata:
+            fetcher = BrightDataFetcher(
+                api_token=settings.brightdata_token,
+                zone=settings.brightdata_zone,
+            )
+        else:
+            fetcher = AmazonFetcher(proxy_url=settings.proxy_url)
 
         repo = PostgresProductRepository(session_factory)
         search = OpenAIPgVectorSearch(

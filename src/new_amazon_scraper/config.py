@@ -26,24 +26,25 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
 
-    # --- Thordata proxy ---
-    thordata_username: str = ""
-    thordata_password: str = ""
-    thordata_proxy_server: str = ""
+    # --- Proxy (fallback: any HTTP proxy) ---
+    proxy_username: str = ""
+    proxy_password: str = ""
+    proxy_server: str = ""
+
+    # --- Bright Data Web Unlocker (preferred) ---
+    brightdata_token: str = ""
+    brightdata_zone: str = ""
 
     # --- App ---
     log_level: str = "INFO"
 
     @property
-    def thordata_proxy_url(self) -> str | None:
+    def proxy_url(self) -> str | None:
         """Assemble the proxy URL, or None if credentials are not configured."""
-        if not (
-            self.thordata_username
-            and self.thordata_password
-            and self.thordata_proxy_server
-        ):
+        if not (self.proxy_username and self.proxy_password and self.proxy_server):
             return None
-        return (
-            f"http://{self.thordata_username}:{self.thordata_password}"
-            f"@{self.thordata_proxy_server}"
-        )
+        return f"http://{self.proxy_username}:{self.proxy_password}@{self.proxy_server}"
+
+    @property
+    def has_brightdata(self) -> bool:
+        return bool(self.brightdata_token and self.brightdata_zone)
