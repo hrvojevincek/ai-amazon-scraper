@@ -111,8 +111,13 @@ class BrightDataFetcher:
 
     Different surface from AmazonFetcher — BD does the fetching for us:
     POST a target URL to api.brightdata.com/request, get back a JSON
-    envelope with the upstream status code and body. No TLS MITM, no
-    proxy cert, no retry logic needed (BD retries internally).
+    envelope {status_code, headers, body}. No TLS MITM, no proxy cert,
+    no retry logic needed (BD retries internally).
+
+    Why format=json, not raw? In raw mode BD collapses upstream errors
+    onto a 200 response — an Amazon 404 (dogs-of-Amazon page) looks
+    identical to a real product page. json mode surfaces the upstream
+    status_code so we can reject errors before they reach the parser.
     """
 
     _ENDPOINT = "https://api.brightdata.com/request"
@@ -143,12 +148,17 @@ class BrightDataFetcher:
 
         resp = await self._client.post(
             self._ENDPOINT,
-            json={"zone": self._zone, "url": url, "format": "raw"},
+            json={"zone": self._zone, "url": url, "format": "json"},
         )
         if resp.status_code >= 400:
             raise FetchError(f"Bright Data API error {resp.status_code}: {resp.text[:200]}")
-        # format=raw returns the upstream body as the response body directly.
-        return resp.text
+        envelope = resp.json()
+        upstream_status = envelope.get("status_code")
+        if upstream_status is None or upstream_status >= 400:
+            raise FetchError(
+                f"upstream {upstream_status} for {url}"
+            )
+        return envelope.get("body", "")
 
     async def aclose(self) -> None:
         await self._client.aclose()

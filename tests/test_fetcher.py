@@ -5,10 +5,12 @@ so tests run instantly. Every behavior (URL building, retry, client-vs-server
 errors, exhaustion) is exercised without hitting anything real.
 """
 
+import json
+
 import httpx
 import pytest
 
-from new_amazon_scraper.fetcher import AmazonFetcher, FetchError
+from new_amazon_scraper.fetcher import AmazonFetcher, BrightDataFetcher, FetchError
 
 
 def _fetcher(handler, max_retries: int = 2) -> AmazonFetcher:
@@ -140,3 +142,83 @@ class TestHappyPath:
         async with _fetcher(handler) as f:
             await f.fetch_html("B08N5WRWNW", "US")
         assert "Mozilla" in headers_seen[0]
+
+
+def _bd_fetcher(handler) -> BrightDataFetcher:
+    return BrightDataFetcher(
+        api_token="t",
+        zone="z",
+        transport=httpx.MockTransport(handler),
+    )
+
+
+class TestBrightDataFetcher:
+    async def test_posts_to_bd_endpoint_with_amazon_url(self):
+        seen: list[dict] = []
+
+        def handler(req):
+            seen.append(json.loads(req.content))
+            return httpx.Response(
+                200,
+                json={"status_code": 200, "headers": {}, "body": "<html>ok</html>"},
+            )
+
+        async with _bd_fetcher(handler) as f:
+            html = await f.fetch_html("B08N5WRWNW", "US")
+        assert html == "<html>ok</html>"
+        assert seen[0]["zone"] == "z"
+        assert seen[0]["url"] == "https://amazon.com/dp/B08N5WRWNW"
+        assert seen[0]["format"] == "json"
+
+    async def test_sends_bearer_token(self):
+        headers_seen: list[str] = []
+
+        def handler(req):
+            headers_seen.append(req.headers.get("authorization", ""))
+            return httpx.Response(
+                200, json={"status_code": 200, "headers": {}, "body": ""}
+            )
+
+        async with _bd_fetcher(handler) as f:
+            await f.fetch_html("B08N5WRWNW", "US")
+        assert headers_seen[0] == "Bearer t"
+
+    async def test_raises_on_upstream_4xx(self):
+        # Amazon 404 ("dogs of Amazon") must not reach the parser — BD in raw
+        # mode would hide this behind a 200, so format=json is the safeguard.
+        def handler(req):
+            return httpx.Response(
+                200,
+                json={"status_code": 404, "headers": {}, "body": "<html>404</html>"},
+            )
+
+        async with _bd_fetcher(handler) as f:
+            with pytest.raises(FetchError, match="upstream 404"):
+                await f.fetch_html("B08N5WRWNW", "US")
+
+    async def test_raises_on_upstream_5xx(self):
+        def handler(req):
+            return httpx.Response(
+                200,
+                json={"status_code": 503, "headers": {}, "body": ""},
+            )
+
+        async with _bd_fetcher(handler) as f:
+            with pytest.raises(FetchError, match="upstream 503"):
+                await f.fetch_html("B08N5WRWNW", "US")
+
+    async def test_raises_on_bd_api_error(self):
+        def handler(req):
+            return httpx.Response(401, text="unauthorized")
+
+        async with _bd_fetcher(handler) as f:
+            with pytest.raises(FetchError, match="Bright Data API error 401"):
+                await f.fetch_html("B08N5WRWNW", "US")
+
+    async def test_unknown_country_raises(self):
+        def handler(req):
+            return httpx.Response(200, json={})
+
+        async with _bd_fetcher(handler) as f:
+            with pytest.raises(FetchError, match="Unsupported country"):
+                await f.fetch_html("B08N5WRWNW", "ZZ")
