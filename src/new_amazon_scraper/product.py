@@ -62,3 +62,17 @@ class Product(BaseModel):
         if self.title:
             return True
         return self.price is not None and bool(self.brand)
+
+
+class PricePoint(BaseModel):
+    """One historical observation of a product's price and stats.
+
+    Used for charting price over time. Always carries a real price — we don't
+    record "no price found" points; that would pollute the history.
+    """
+
+    price: Decimal
+    currency: CurrencyCode | None = None
+    rating: float | None = Field(default=None, ge=0, le=5)
+    review_count: int | None = Field(default=None, ge=0)
+    scraped_at: datetime
