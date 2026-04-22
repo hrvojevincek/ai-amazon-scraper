@@ -84,6 +84,9 @@ class PostgresProductRepository:
                 existing.update_from_product(product)
 
             if product.price is not None:
+                # Flush so the products row exists before price_history's FK
+                # check runs. Without this, a brand-new ASIN would FK-violate.
+                await session.flush()
                 session.add(PriceHistoryRow(
                     asin=product.asin,
                     country_code=product.country_code,
