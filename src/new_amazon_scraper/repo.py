@@ -10,7 +10,8 @@ The repo persists what it's given.
 
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from .db import PriceHistoryRow, ProductRow
@@ -76,17 +77,40 @@ class PostgresProductRepository:
         self._session_factory = session_factory
 
     async def save(self, product: Product) -> None:
+        # INSERT ... ON CONFLICT DO UPDATE — atomic at the DB level.
+        # Prior get-then-insert raced: two concurrent saves for the same PK
+        # both saw existing=None and both tried to INSERT, violating the PK.
+        values = {
+            "asin": product.asin,
+            "country_code": product.country_code,
+            "title": product.title,
+            "brand": product.brand,
+            "price": product.price,
+            "currency": product.currency,
+            "rating": product.rating,
+            "review_count": product.review_count,
+            "availability": product.availability,
+            "product_url": str(product.product_url) if product.product_url else None,
+            "images": [str(u) for u in product.images],
+            "categories": list(product.categories),
+            "scraped_at": product.scraped_at,
+        }
         async with self._session_factory() as session:
-            existing = await session.get(ProductRow, (product.asin, product.country_code))
-            if existing is None:
-                session.add(ProductRow.from_product(product))
-            else:
-                existing.update_from_product(product)
+            stmt = pg_insert(ProductRow).values(**values)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["asin", "country_code"],
+                set_={
+                    **{
+                        k: getattr(stmt.excluded, k)
+                        for k in values
+                        if k not in ("asin", "country_code")
+                    },
+                    "updated_at": func.now(),
+                },
+            )
+            await session.execute(stmt)
 
             if product.price is not None:
-                # Flush so the products row exists before price_history's FK
-                # check runs. Without this, a brand-new ASIN would FK-violate.
-                await session.flush()
                 session.add(PriceHistoryRow(
                     asin=product.asin,
                     country_code=product.country_code,

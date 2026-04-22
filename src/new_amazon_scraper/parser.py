@@ -91,14 +91,20 @@ def _extract_price(soup: BeautifulSoup) -> Decimal | None:
 
 
 def _normalize_price_number(text: str) -> Decimal | None:
-    """Extract and normalize a price number from a string like '$1,299.99' or '29,95 €'."""
+    """Extract and normalize a price number from a string like '$1,299.99', '29,95 €', or '1.299,99 €'."""
     match = _PRICE_NUMBER_RE.search(text)
     if not match:
         return None
     raw = match.group(0)
-    # "29,95" → European decimal; "1,299.99" → US thousands separator.
-    is_european_decimal = raw.count(",") == 1 and "." not in raw
-    raw = raw.replace(",", ".") if is_european_decimal else raw.replace(",", "")
+    # Whichever of "." / "," appears LAST is the decimal separator;
+    # the other is thousands (drop it). Handles US "1,299.99",
+    # EU "1.299,99", and single-separator forms like "29,95" or "9.50".
+    last_dot = raw.rfind(".")
+    last_comma = raw.rfind(",")
+    if last_comma > last_dot:
+        raw = raw.replace(".", "").replace(",", ".")
+    else:
+        raw = raw.replace(",", "")
     try:
         return Decimal(raw)
     except InvalidOperation:

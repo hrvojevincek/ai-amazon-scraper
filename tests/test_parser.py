@@ -84,6 +84,8 @@ class TestPriceNormalization:
              Decimal("1299.99")),
             ('<span class="a-price"><span class="a-offscreen">29,95 €</span></span>',
              Decimal("29.95")),
+            ('<span class="a-price"><span class="a-offscreen">1.299,99 €</span></span>',
+             Decimal("1299.99")),
             ('<span class="a-price"><span class="a-offscreen">£9.50</span></span>',
              Decimal("9.50")),
             ('<span class="a-price"><span class="a-offscreen">¥1500</span></span>',
